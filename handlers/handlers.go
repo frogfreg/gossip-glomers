@@ -32,12 +32,9 @@ func GenerateHandlerFunc(n *maelstrom.Node) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 		newId := uuid.NewString()
 
-		newBody, err := json.Marshal(GenerateReply{Type: "generate_ok", Id: newId})
-		if err != nil {
-			return err
-		}
+		replyBody := GenerateReply{Type: "generate_ok", Id: newId}
 
-		return n.Reply(msg, newBody)
+		return n.Reply(msg, replyBody)
 
 	}
 }
