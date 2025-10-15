@@ -122,7 +122,7 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology) func(maelstrom.Messa
 			return nil
 		}
 
-		topo = &tb.Body
+		*topo = tb.Body
 
 		for k := range tb.Body {
 			if k == n.ID() {
