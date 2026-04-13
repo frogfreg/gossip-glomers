@@ -66,6 +66,9 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, topo *T
 		}
 
 		for _, neighbor := range (*topo)[n.ID()] {
+			if neighbor == msg.Src {
+				continue
+			}
 
 			if err := n.Send(neighbor, msg.Body); err != nil {
 				return err
