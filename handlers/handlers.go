@@ -52,29 +52,23 @@ type BroadcastReply struct {
 	Type string `json:"type"`
 }
 
-func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, topo *Topology, ncm map[string]chan int) func(maelstrom.Message) error {
+func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, messageChan chan int) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
-		slog.Info("XXXXXX  broadcast called", "node", n.ID(), "topology", *topo)
 		var bb BroadcastBody
 
 		if err := json.Unmarshal(msg.Body, &bb); err != nil {
 			return err
 		}
 
+		slog.Debug("broadcast called", "node", n.ID(), "message", bb.Message)
 		if _, loaded := receivedMessages.LoadOrStore(bb.Message, true); loaded {
+			slog.Debug("already processed", "message", bb.Message)
 			return nil
 		}
 
-		for _, neighbor := range (*topo)[n.ID()] {
-			if neighbor == msg.Src {
-				continue
-			}
-
-			go func() {
-				n := neighbor
-				ncm[n] <- bb.Message
-			}()
-		}
+		go func() {
+			messageChan <- bb.Message
+		}()
 
 		replyBody := BroadcastReply{Type: "broadcast_ok"}
 
@@ -90,6 +84,8 @@ type ReadReply struct {
 func ReadHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 
+		slog.Debug("reading local messages", "node", n.ID())
+
 		var finalList []int
 
 		receivedMessages.Range(func(key, value any) bool {
@@ -100,6 +96,8 @@ func ReadHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map) func(maelstr
 
 		replyBody := ReadReply{Type: "read_ok", Messages: finalList}
 
+		slog.Debug("reading local messages", "node", n.ID(), "messages", finalList)
+
 		return n.Reply(msg, replyBody)
 	}
 }
@@ -108,9 +106,9 @@ type TopologyReply struct {
 	Type string `json:"type"`
 }
 
-func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, ncm map[string]chan int, topoChan chan bool) func(maelstrom.Message) error {
+func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
-		slog.Info("XXXXXX  topology called", "node", n.ID(), "topology", *topo)
+		slog.Debug("topology called", "node", n.ID(), "topology", *topo)
 
 		var tb struct {
 			Body Topology `json:"topology"`
@@ -129,14 +127,11 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, ncm map[string]chan 
 
 		*topo = tb.Body
 
-		for k, nodes := range tb.Body {
+		for k := range tb.Body {
 			if k == n.ID() {
-				for _, neighbor := range nodes {
-					ncm[neighbor] = make(chan int)
-				}
 				continue
 			}
-			slog.Info("XXXXXX  forwarding message", "node", n.ID(), "topology", *topo)
+			slog.Debug("forwarding topology message", "node", n.ID(), "topology", *topo)
 			if err := n.Send(k, msg.Body); err != nil {
 				return err
 			}
@@ -144,7 +139,7 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, ncm map[string]chan 
 
 		replyBody := TopologyReply{Type: "topology_ok"}
 
-		slog.Info("XXXXXX  topology should now be set", "node", n.ID(), "local topo", *topo)
+		slog.Debug("topology should now be set", "node", n.ID(), "local topo", *topo)
 
 		return n.Reply(msg, replyBody)
 	}

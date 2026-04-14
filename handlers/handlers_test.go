@@ -9,8 +9,12 @@ import (
 func TestStuff(t *testing.T) {
 	n := maelstrom.NewNode()
 	topo := make(Topology)
+	var topoChan = make(chan bool)
+	go func() {
+		<-topoChan
+	}()
 
-	f := TopologyHandlerFunc(n, &topo)
+	f := TopologyHandlerFunc(n, &topo, topoChan)
 
 	m := maelstrom.Message{
 		Src:  "c7",
@@ -24,7 +28,7 @@ func TestStuff(t *testing.T) {
 		t.Error(err)
 	}
 
-	t.Logf("topology after calling handler: %+v\n", topo)
-	t.Error("erring on purpose")
+	// t.Logf("topology after calling handler: %+v\n", topo)
+	// t.Error("erring on purpose")
 
 }
