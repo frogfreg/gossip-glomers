@@ -7,6 +7,8 @@ import (
 	"gossip-glomers/handlers"
 	"sync"
 
+	"container/list"
+
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
@@ -15,8 +17,11 @@ func main() {
 
 	var receivedMessages sync.Map
 	var topo handlers.Topology
+	var topoChan = make(chan bool)
 
-	logFile, err := os.Create("/home/nyan/temp/maelstrom/logs/execution.log")
+	var nodeChanMap = make(map[string]chan int)
+
+	logFile, err := os.Create("/home/meme/workspace/gossip-glomers/execution.log")
 	if err != nil {
 		panic(err)
 	}
@@ -25,9 +30,9 @@ func main() {
 
 	n.Handle("echo", handlers.EchoHandlerFunc(n))
 	n.Handle("generate", handlers.GenerateHandlerFunc(n))
-	n.Handle("broadcast", handlers.BroadcastHandlerFunc(n, &receivedMessages, &topo))
+	n.Handle("broadcast", handlers.BroadcastHandlerFunc(n, &receivedMessages, &topo, nodeChanMap))
 	n.Handle("read", handlers.ReadHandlerFunc(n, &receivedMessages))
-	n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo))
+	n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, nodeChanMap, topoChan))
 
 	if err := n.Run(); err != nil {
 		log.Fatal(err)

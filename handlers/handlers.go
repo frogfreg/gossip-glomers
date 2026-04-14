@@ -52,7 +52,7 @@ type BroadcastReply struct {
 	Type string `json:"type"`
 }
 
-func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, topo *Topology) func(maelstrom.Message) error {
+func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, topo *Topology, ncm map[string]chan int) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 		slog.Info("XXXXXX  broadcast called", "node", n.ID(), "topology", *topo)
 		var bb BroadcastBody
@@ -70,16 +70,15 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, topo *T
 				continue
 			}
 
-			if err := n.Send(neighbor, msg.Body); err != nil {
-				return err
-			}
-
+			go func() {
+				n := neighbor
+				ncm[n] <- bb.Message
+			}()
 		}
 
 		replyBody := BroadcastReply{Type: "broadcast_ok"}
 
 		return n.Reply(msg, replyBody)
-
 	}
 }
 
@@ -109,7 +108,7 @@ type TopologyReply struct {
 	Type string `json:"type"`
 }
 
-func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology) func(maelstrom.Message) error {
+func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, ncm map[string]chan int, topoChan chan bool) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 		slog.Info("XXXXXX  topology called", "node", n.ID(), "topology", *topo)
 
@@ -124,11 +123,17 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology) func(maelstrom.Messa
 		if len(*topo) > 0 {
 			return nil
 		}
+		defer func() {
+			topoChan <- true
+		}()
 
 		*topo = tb.Body
 
-		for k := range tb.Body {
+		for k, nodes := range tb.Body {
 			if k == n.ID() {
+				for _, neighbor := range nodes {
+					ncm[neighbor] = make(chan int)
+				}
 				continue
 			}
 			slog.Info("XXXXXX  forwarding message", "node", n.ID(), "topology", *topo)
