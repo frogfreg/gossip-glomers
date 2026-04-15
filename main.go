@@ -31,13 +31,13 @@ func main() {
 	go func() {
 		for m := range messageChan {
 			for _, neighbor := range topo[n.ID()] {
+				body := struct {
+					Type    string `json:"type"`
+					Message int    `json:"message"`
+				}{Type: "broadcast", Message: m}
 				go func() {
-					slog.Debug("about to call blockinRPC", "source", n.ID(), "destination", neighbor, "message", m)
-					if err := blockingRPC(n, neighbor, m); err != nil {
-						slog.Debug("something went horribly wrong", "err", err)
-						panic(err)
-					}
-					slog.Debug("blockingRPC finished", "source", n.ID(), "destination", neighbor, "message", m)
+					// used to send rpc call here
+					n.RPC(neighbor)
 
 				}()
 			}
@@ -67,32 +67,33 @@ func main() {
 
 }
 
-func blockingRPC(n *maelstrom.Node, destNode string, message int) error {
-	var doneChan chan bool
-	var errChan chan error
+// func blockingRPC(n *maelstrom.Node, destNode string, message int) error {
+// 	var doneChan = make(chan bool)
+// 	var errChan = make(chan error)
 
-	body := struct {
-		Type    string `json:"type"`
-		Message int    `json:"message"`
-	}{Type: "broadcast", Message: message}
+// 	body := struct {
+// 		Type    string `json:"type"`
+// 		Message int    `json:"message"`
+// 	}{Type: "broadcast", Message: message}
 
-	go func() {
-		slog.Debug("sending rpc", "source", n.ID(), "destination", destNode, "message", message)
-		if err := n.RPC(destNode, body, func(msg maelstrom.Message) error {
-			slog.Debug("received response from rpc call", "sentFrom", n.ID(), "to", destNode, "message", message)
-			doneChan <- true
-			return nil
-		}); err != nil {
-			errChan <- err
-		} else {
-			errChan <- nil
-		}
+// 	go func() {
+// 		slog.Debug("sending rpc", "source", n.ID(), "destination", destNode, "message", message)
+// 		err := n.RPC(destNode, body, func(msg maelstrom.Message) error {
+// 			slog.Debug("received response from rpc call", "sentFrom", n.ID(), "to", destNode, "message", message)
+// 			doneChan <- true
+// 			return nil
+// 		})
+// 		if err != nil {
+// 			errChan <- err
+// 		} else {
+// 			errChan <- nil
+// 		}
 
-	}()
+// 	}()
 
-	err := <-errChan
-	<-doneChan
+// 	err := <-errChan
+// 	<-doneChan
 
-	return err
+// 	return err
 
-}
+// }
