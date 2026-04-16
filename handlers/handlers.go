@@ -67,10 +67,9 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 			return nil
 		}
 
-		for _, neighbor := range topo[n.ID()] {
-			nqm[neighbor].PushBack(bb.Message)
-
-		}
+		go func() {
+			messageChan <- bb.Message
+		}()
 
 		replyBody := BroadcastReply{Type: "broadcast_ok"}
 

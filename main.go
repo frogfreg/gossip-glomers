@@ -6,10 +6,12 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"time"
 
-	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 	"gossip-glomers/handlers"
 	"sync"
+
+	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
 )
 
 func main() {
@@ -30,23 +32,37 @@ func main() {
 	n.Handle("read", handlers.ReadHandlerFunc(n, &receivedMessages))
 	// n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, nodeChanMap, topoChan))
 	n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, topoChan, nodeQueueMap))
-	// go func() {
-	// 	for m := range messageChan {
-	// 		for _, neighbor := range topo[n.ID()] {
-	// 			body := struct {
-	// 				Type    string `json:"type"`
-	// 				Message int    `json:"message"`
-	// 			}{Type: "broadcast", Message: m}
-	// 			go func() {
-	// 				// used to send rpc call here
-	// 				n.RPC(neighbor)
+	go func() {
+		for m := range messageChan {
+			for _, neighbor := range topo[n.ID()] {
+				l := nodeQueueMap[neighbor]
+				l.PushBack(m)
+				var stop = false
+				for e := l.Front(); e != nil && !stop; e = e.Next() {
+					var done = make(chan bool)
+					body := generateBroadcastBody((e.Value).(int))
+					rpcErr := n.RPC(neighbor, body, func(msg maelstrom.Message) error {
+						done <- true
 
-	// 			}()
-	// 		}
+						return nil
+					})
+					if rpcErr != nil {
+						panic(rpcErr)
+					}
 
-	// 	}
+					select {
+					case <-time.After(500 * time.Millisecond):
+						stop = true
+					case <-done:
+						l.Remove(e)
 
-	// }()
+					}
+				}
+			}
+
+		}
+
+	}()
 
 	go func() {
 		<-topoChan
@@ -67,6 +83,15 @@ func main() {
 		log.Fatal(err)
 	}
 
+}
+
+type broadcastBody struct {
+	Type    string `json:"type"`
+	Message int    `json:"message"`
+}
+
+func generateBroadcastBody(message int) broadcastBody {
+	return broadcastBody{Type: "broadcast", Message: message}
 }
 
 // func blockingRPC(n *maelstrom.Node, destNode string, message int) error {
@@ -99,3 +124,8 @@ func main() {
 // 	return err
 
 // }
+
+// body := struct {
+// 	Type    string `json:"type"`
+// 	Message int    `json:"message"`
+// }{Type: "broadcast", Message: m}
