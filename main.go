@@ -1,6 +1,7 @@
 package main
 
 import (
+	"container/list"
 	"fmt"
 	"log"
 	"log/slog"
@@ -18,33 +19,34 @@ func main() {
 	var topo handlers.Topology
 	var topoChan = make(chan bool)
 	var messageChan = make(chan int)
+	var nodeQueueMap = make(map[string]*list.List)
 
 	// var nodeChanMap = make(map[string]chan int)
 
 	n.Handle("echo", handlers.EchoHandlerFunc(n))
 	n.Handle("generate", handlers.GenerateHandlerFunc(n))
 	// n.Handle("broadcast", handlers.BroadcastHandlerFunc(n, &receivedMessages, &topo, nodeChanMap))
-	n.Handle("broadcast", handlers.BroadcastHandlerFunc(n, &receivedMessages, messageChan))
+	n.Handle("broadcast", handlers.BroadcastHandlerFunc(n, &receivedMessages, messageChan, topo, nodeQueueMap))
 	n.Handle("read", handlers.ReadHandlerFunc(n, &receivedMessages))
 	// n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, nodeChanMap, topoChan))
-	n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, topoChan))
-	go func() {
-		for m := range messageChan {
-			for _, neighbor := range topo[n.ID()] {
-				body := struct {
-					Type    string `json:"type"`
-					Message int    `json:"message"`
-				}{Type: "broadcast", Message: m}
-				go func() {
-					// used to send rpc call here
-					n.RPC(neighbor)
+	n.Handle("topology", handlers.TopologyHandlerFunc(n, &topo, topoChan, nodeQueueMap))
+	// go func() {
+	// 	for m := range messageChan {
+	// 		for _, neighbor := range topo[n.ID()] {
+	// 			body := struct {
+	// 				Type    string `json:"type"`
+	// 				Message int    `json:"message"`
+	// 			}{Type: "broadcast", Message: m}
+	// 			go func() {
+	// 				// used to send rpc call here
+	// 				n.RPC(neighbor)
 
-				}()
-			}
+	// 			}()
+	// 		}
 
-		}
+	// 	}
 
-	}()
+	// }()
 
 	go func() {
 		<-topoChan

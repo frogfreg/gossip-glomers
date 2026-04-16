@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"container/list"
 	"encoding/json"
 	"log/slog"
 
@@ -52,7 +53,7 @@ type BroadcastReply struct {
 	Type string `json:"type"`
 }
 
-func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, messageChan chan int) func(maelstrom.Message) error {
+func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, messageChan chan int, topo Topology, nqm map[string]*list.List) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 		var bb BroadcastBody
 
@@ -66,9 +67,10 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 			return nil
 		}
 
-		go func() {
-			messageChan <- bb.Message
-		}()
+		for _, neighbor := range topo[n.ID()] {
+			nqm[neighbor].PushBack(bb.Message)
+
+		}
 
 		replyBody := BroadcastReply{Type: "broadcast_ok"}
 
@@ -106,7 +108,7 @@ type TopologyReply struct {
 	Type string `json:"type"`
 }
 
-func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool) func(maelstrom.Message) error {
+func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool, nqm map[string]*list.List) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
 		slog.Debug("topology called", "node", n.ID(), "topology", *topo)
 
@@ -129,6 +131,13 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool) 
 
 		for k := range tb.Body {
 			if k == n.ID() {
+
+				for _, neighbor := range (*topo)[n.ID()] {
+
+					nqm[neighbor] = list.New()
+
+				}
+
 				continue
 			}
 			slog.Debug("forwarding topology message", "node", n.ID(), "topology", *topo)
