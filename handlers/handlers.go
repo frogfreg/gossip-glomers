@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	maelstrom "github.com/jepsen-io/maelstrom/demo/go"
+	"time"
 )
 
 type Topology map[string][]string
@@ -53,8 +54,9 @@ type BroadcastReply struct {
 	Type string `json:"type"`
 }
 
-func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, messageChan chan int, topo Topology, nqm map[string]*list.List) func(maelstrom.Message) error {
+func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, messageChan chan int, topo *Topology, nqm map[string]*list.List) func(maelstrom.Message) error {
 	return func(msg maelstrom.Message) error {
+		slog.Debug("wtf", "topology", topo)
 		var bb BroadcastBody
 
 		replyBody := BroadcastReply{Type: "broadcast_ok"}
@@ -69,10 +71,19 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 			return n.Reply(msg, replyBody)
 		}
 
-		go func() {
-			slog.Debug("sending to messageChan", "message", bb.Message, "current node", n.ID(), "source node", msg.Src)
-			messageChan <- bb.Message
-		}()
+		slog.Debug("about to enter neighbor loop ", "neighbors", (*topo)[n.ID()])
+		for _, neighbor := range (*topo)[n.ID()] {
+			if neighbor == msg.Src {
+				continue
+			}
+			slog.Debug("sending message with retry", "from", n.ID(), "to", neighbor, "message", bb.Message)
+			go sendMessageWithRetry(n, neighbor, bb.Message)
+		}
+
+		// go func() {
+		// 	slog.Debug("sending to messageChan", "message", bb.Message, "current node", n.ID(), "source node", msg.Src)
+		// 	messageChan <- bb.Message
+		// }()
 
 		return n.Reply(msg, replyBody)
 	}
@@ -152,4 +163,40 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool, 
 
 		return n.Reply(msg, replyBody)
 	}
+}
+
+type broadcastBody struct {
+	Type    string `json:"type"`
+	Message int    `json:"message"`
+}
+
+func generateBroadcastBody(message int) broadcastBody {
+	return broadcastBody{Type: "broadcast", Message: message}
+}
+func sendMessageWithRetry(n *maelstrom.Node, dest string, message int) {
+	done := make(chan bool)
+	body := generateBroadcastBody(message)
+	for {
+		slog.Debug("sending rpc message", "from", n.ID(), "to", dest, "message", message)
+		rpcErr := n.RPC(dest, body, func(msg maelstrom.Message) error {
+			slog.Debug("received response from node", "from", n.ID(), "to", dest, "msg.src", msg.Src, "msg.dest", msg.Dest, "body", string(msg.Body))
+			done <- true
+
+			return nil
+		})
+		if rpcErr != nil {
+			panic(rpcErr)
+		}
+
+		select {
+		case <-time.After(500 * time.Millisecond):
+			slog.Debug("no response, resending message", "source", n.ID(), "destination", dest, "message", message)
+			continue
+		case <-done:
+			slog.Debug("breaking loop in retryable message", "source", n.ID(), "destination", dest, "message", message)
+			return
+
+		}
+	}
+
 }
