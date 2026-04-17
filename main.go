@@ -36,12 +36,16 @@ func main() {
 		for m := range messageChan {
 			for _, neighbor := range topo[n.ID()] {
 				l := nodeQueueMap[neighbor]
+				slog.Debug("pushing to queue", "node queue", neighbor, "message", m)
 				l.PushBack(m)
 				var stop = false
 				for e := l.Front(); e != nil && !stop; e = e.Next() {
 					var done = make(chan bool)
 					body := generateBroadcastBody((e.Value).(int))
+
+					slog.Debug("about to send rpc message", "message", e.Value, "from", n.ID(), "to", neighbor)
 					rpcErr := n.RPC(neighbor, body, func(msg maelstrom.Message) error {
+						slog.Debug("received response from node", "from", n.ID(), "to", neighbor, "msg.src", msg.Src, "msg.dest", msg.Dest, "body", string(msg.Body))
 						done <- true
 
 						return nil
@@ -51,13 +55,17 @@ func main() {
 					}
 
 					select {
-					case <-time.After(500 * time.Millisecond):
+					case <-time.After(900 * time.Millisecond):
+						slog.Debug("no response, stopping loop", "message", e.Value, "from", n.ID(), "to", neighbor, "queue length", l.Len())
+
 						stop = true
 					case <-done:
+						slog.Debug("successfully processed element from queue", "message", e.Value)
 						l.Remove(e)
 
 					}
 				}
+				slog.Debug("finished processing neighbor", "neighbor", neighbor)
 			}
 
 		}

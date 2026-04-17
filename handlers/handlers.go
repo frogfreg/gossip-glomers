@@ -57,6 +57,8 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 	return func(msg maelstrom.Message) error {
 		var bb BroadcastBody
 
+		replyBody := BroadcastReply{Type: "broadcast_ok"}
+
 		if err := json.Unmarshal(msg.Body, &bb); err != nil {
 			return err
 		}
@@ -64,14 +66,13 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 		slog.Debug("broadcast called", "node", n.ID(), "message", bb.Message)
 		if _, loaded := receivedMessages.LoadOrStore(bb.Message, true); loaded {
 			slog.Debug("already processed", "message", bb.Message)
-			return nil
+			return n.Reply(msg, replyBody)
 		}
 
 		go func() {
+			slog.Debug("sending to messageChan", "message", bb.Message, "current node", n.ID(), "source node", msg.Src)
 			messageChan <- bb.Message
 		}()
-
-		replyBody := BroadcastReply{Type: "broadcast_ok"}
 
 		return n.Reply(msg, replyBody)
 	}
