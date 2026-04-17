@@ -126,31 +126,14 @@ func TopologyHandlerFunc(n *maelstrom.Node, topo *Topology, topoChan chan bool, 
 			return err
 		}
 
-		if len(*topo) > 0 {
-			return nil
-		}
-		defer func() {
-			topoChan <- true
-		}()
+		topoChan <- true
 
 		*topo = tb.Body
 
-		for k := range tb.Body {
-			if k == n.ID() {
-
-				for _, neighbor := range (*topo)[n.ID()] {
-
-					nqm[neighbor] = list.New()
-
-				}
-
-				continue
-			}
-			slog.Debug("forwarding topology message", "node", n.ID(), "topology", *topo)
-			if err := n.Send(k, msg.Body); err != nil {
-				return err
-			}
+		for _, neighbor := range (*topo)[n.ID()] {
+			nqm[neighbor] = list.New()
 		}
+		topoChan <- true
 
 		replyBody := TopologyReply{Type: "topology_ok"}
 
