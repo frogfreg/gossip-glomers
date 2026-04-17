@@ -80,11 +80,6 @@ func BroadcastHandlerFunc(n *maelstrom.Node, receivedMessages *sync.Map, message
 			go sendMessageWithRetry(n, neighbor, bb.Message)
 		}
 
-		// go func() {
-		// 	slog.Debug("sending to messageChan", "message", bb.Message, "current node", n.ID(), "source node", msg.Src)
-		// 	messageChan <- bb.Message
-		// }()
-
 		return n.Reply(msg, replyBody)
 	}
 }
